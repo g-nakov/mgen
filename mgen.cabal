@@ -18,15 +18,15 @@ library
                        Expression,
                        Matlab,
                        Dimensions
-  build-depends:       base >=4.12 && <4.13, containers, mtl
-  hs-source-dirs:      Src 
+  build-depends:       base >=4.12, containers, mtl
+  hs-source-dirs:      Src
   default-language:    Haskell2010
   ghc-options:         -Wall
   default-extensions:  DeriveFunctor,
                        LambdaCase
-    
+
 executable mgen
   main-is:             Src/Main.hs
-  build-depends:       base >=4.12 && <4.13, mgen
+  build-depends:       base >=4.12, mgen
   default-language:    Haskell2010
   ghc-options:         -Wall
