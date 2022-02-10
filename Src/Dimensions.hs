@@ -1,4 +1,4 @@
--- {-# LANGUAGE FlexibleInstances, TypeSynonymInstances, TypeApplications #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances #-}
 module Dimensions where
 
 import qualified Data.Map as M
@@ -31,21 +31,23 @@ instance Show BaseUnit where
 -- (10^prefix, base unit, exponent)
 type DerivedUnit = [(Int, BaseUnit, Int)]
 
-normalise :: DerivedUnit -> DerivedUnit
-normalise us =
-  let f  = \(pr,u,exp) -> modify $ M.alter (Just . maybe (pr, exp) (\(pr',exp') -> (pr + pr', exp + exp'))) u
-      mus = execState (traverse_ f us) M.empty
-      h = \m -> M.insert One ((M.foldrWithKey (\_ (pr, exp) -> (pr * exp +)) 0 m), 1) m
-      g = M.foldrWithKey (\u (pr,exp) -> ((if u /= One then 1 else pr, u, exp) :)) []
-  in  sortOn (\( _, u, _) -> u) . g . h $ mus
+newtype DerivedUnitNF = DUNF (Int, [(BaseUnit, Int)]) deriving (Eq, Show)
 
+normalise :: DerivedUnit -> DerivedUnitNF
+normalise us =
+  let initS = (0, M.empty)
+      f  = \(pr,u,exp) -> modify (\(io,m) -> (pr * exp + io,
+                                       M.alter (Just . maybe exp (\exp' -> (exp + exp'))) u m))
+      (io, mus) = execState (traverse_ f us) initS
+      g = M.foldrWithKey (\u exp l -> if (exp == 0 || u == One) then l else (u, exp) : l) []
+  in  DUNF (io , sortOn fst . g $ mus)
+ 
 printUnits :: DerivedUnit -> String
-printUnits =  intercalate " " . map print'. normalise
+printUnits u =  let (DUNF (i, us)) = normalise u
+                    i'  =  if i == 0 then [] else ["10^" ++ show i]  
+                in intercalate " " $ i' ++ map print' us
   where
-    print' (pr, One, e) = show "10^" ++ show (pr^e)
-    print' (1 , u,   e) = show u ++ "^" ++ show e
-    print' (pr, u,   e) = printPrefix pr ++  show u ++ "^" ++ show e
-   
+    print' (u, e) = show u ++ "^" ++ show e 
     printPrefix 0 = ""
     printPrefix 1 = "da"
     printPrefix 2 = "h"
@@ -60,7 +62,7 @@ printUnits =  intercalate " " . map print'. normalise
     printPrefix (-1) = "d"
     printPrefix (-2) = "c"
     printPrefix (-3) = "m"
-    printPrefix (-6) = "μ" 
+    printPrefix (-6) = "μ"
     printPrefix (-9) = "n"
     printPrefix (-12) = "p"
     printPrefix (-15) = "f"
