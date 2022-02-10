@@ -1,0 +1,32 @@
+cabal-version:       2.2
+
+name:                mgen
+version:             0.1.0.0
+-- synopsis:
+-- description:
+-- license:
+license-file:        LICENSE
+author:              Georgi Nakov
+maintainer:          nakov.gl@gmail.com
+-- copyright:
+-- category:
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+
+library
+  exposed-modules:     Parser,
+                       Expression,
+                       Matlab,
+                       Dimensions
+  build-depends:       base >=4.12 && <4.13, containers, mtl
+  hs-source-dirs:      Src 
+  default-language:    Haskell2010
+  ghc-options:         -Wall
+  default-extensions:  DeriveFunctor,
+                       LambdaCase
+    
+executable mgen
+  main-is:             Src/Main.hs
+  build-depends:       base >=4.12 && <4.13, mgen
+  default-language:    Haskell2010
+  ghc-options:         -Wall
