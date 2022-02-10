@@ -1,3 +1,4 @@
+-- {-# LANGUAGE FlexibleInstances, TypeSynonymInstances, TypeApplications #-}
 module Dimensions where
 
 import qualified Data.Map as M
@@ -5,28 +6,20 @@ import Control.Monad.State
 import Data.Foldable (traverse_)
 import Data.List (sortOn, intercalate)
 
-{-
-length 	meter 	m
-mass 	kilogram       	kg
-time 	second 	s
-electric current 	ampere 	A
-thermodynamic temperature       	kelvin 	K
-amount of substance 	mole 	mol
-luminous intensity 
--}
--- data Quantity = Length | Mass | Time | Current | Temp | Subst | Lum  
 data BaseUnit
-  = Meter -- length
+  = One   -- dimensionless unit
+  | Meter -- length
   | Gram  -- mass
   | Sec   -- time
-  | Amp   -- el. current
+  | Amp   -- electric current
   | Kel   -- temp.
   | Mol   -- substance
-  | Cd    -- luminous int.
-  | One   -- dimensionless units
+  | Cd    -- luminous intensity
+
   deriving (Ord,Eq)
 
 instance Show BaseUnit where
+  show One   = ""
   show Meter = "m"
   show Gram  = "g"
   show Sec   = "s"
@@ -34,21 +27,25 @@ instance Show BaseUnit where
   show Kel   = "K"
   show Mol   = "mol"
   show Cd    = "cd"
-  show One   = ""
+  
+-- (10^prefix, base unit, exponent)
+type DerivedUnit = [(Int, BaseUnit, Int)]
 
-  -- mm / (s^2)
-type DerivedUnit = [(Int, BaseUnit, Int)] -- (10^prefix, base unit, exponent)
-
--- [(One, Meter, ) (Micro, Meter, -2)]
--- m / (mm^2) ~> 1 / (mm^2) ~> 100 / mm ~> 10^4 / m ~>
 normalise :: DerivedUnit -> DerivedUnit
 normalise us =
-  let f = (\(pr,u,exp) -> modify $ M.alter (Just . maybe (pr, exp) (\(pr',exp') -> (pr + pr', exp + exp'))) u)
-  in  sortOn (\( _, u, _) -> u) $ M.foldrWithKey (\u (pr,exp) -> ((pr, u, exp) :)) [] $ execState (traverse_ f us) M.empty   
+  let f  = \(pr,u,exp) -> modify $ M.alter (Just . maybe (pr, exp) (\(pr',exp') -> (pr + pr', exp + exp'))) u
+      mus = execState (traverse_ f us) M.empty
+      h = \m -> M.insert One ((M.foldrWithKey (\_ (pr, exp) -> (pr * exp +)) 0 m), 1) m
+      g = M.foldrWithKey (\u (pr,exp) -> ((if u /= One then 1 else pr, u, exp) :)) []
+  in  sortOn (\( _, u, _) -> u) . g . h $ mus
 
 printUnits :: DerivedUnit -> String
-printUnits =  intercalate " " . map (\(pr, u, e) -> printPrefix pr ++  show u ++ "^" ++ show e) . normalise
+printUnits =  intercalate " " . map print'. normalise
   where
+    print' (pr, One, e) = show "10^" ++ show (pr^e)
+    print' (1 , u,   e) = show u ++ "^" ++ show e
+    print' (pr, u,   e) = printPrefix pr ++  show u ++ "^" ++ show e
+   
     printPrefix 0 = ""
     printPrefix 1 = "da"
     printPrefix 2 = "h"
@@ -72,11 +69,3 @@ printUnits =  intercalate " " . map (\(pr, u, e) -> printPrefix pr ++  show u ++
     printPrefix (-24) = "y"
     printPrefix s     = "10^" ++ show s ++ " "
 
-    
-data Dimension
-  = Base 
-  | Dimension :^: Int
-  | Dimension :*: Dimension
-  deriving (Show)
-
-(5,m,2) -> 
