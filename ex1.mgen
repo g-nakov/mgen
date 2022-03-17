@@ -1,13 +1,20 @@
 this is a comment
 
-and this, too
-
-inputvals : 
-   nlayer : contains the @number of layers (2 or 3) in the sample
-   lams   : contains thermal conductivities of the layer.
-   kappas : contains radius of
-     - sample (in @mm)
-     - laser (in @mm)
-     - measuring (in @mm)
-   nesting : try nested structures
-     tflash : duration of laser flash in @ms
+nesting :
+  field_1 : simple field @Km
+  arraylit : contains
+    - test item 1 @mm
+    - item 2 @mm
+  input :
+    nlayer : contains the @number of layers (2 or 3) in the sample
+    lams   : array containing thermal conductivities of the layer @nlayer in (@mm).
+    kappas : contains radius of
+      - sample (in @mm)
+      - laser (in @mm)
+      - measuring (in @km)
+    tflash : duration of laser flash in @ms
+  field : @number
+  another_nesting :
+     array : @input.nlayer in @mm
+  
+other stuff

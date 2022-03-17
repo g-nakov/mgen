@@ -1,21 +1,35 @@
 module Parser where 
 
-import Expression
 import Control.Applicative
 import Control.Monad
 import Data.Functor
-import Data.Char (isSpace, isAlphaNum)
+import Data.Char
 
-newtype Parser a = Parser (String -> Maybe (a, String))
 
-parse :: Parser a -> String -> Maybe (a, String)
-parse (Parser f) = f
+type IndentLvl = Int
+
+newtype Parser a = Parser (String -> IndentLvl -> Maybe (a, String, IndentLvl))
+
+getLvl :: Parser IndentLvl
+getLvl = Parser $ \s il -> Just (il, s, il)
+
+putLvl :: IndentLvl -> Parser ()
+putLvl l = Parser $ \s _ -> Just ((), s, l)
+
+parse :: Parser a -> String -> IndentLvl -> a
+parse (Parser f) s l = case f s l of
+  (Just (a, [], _)) -> a
+  _          -> error "Error parsing"
+
+initS :: IndentLvl
+initS = 0
 
 instance Monad Parser where
-  return a = Parser $ \s -> Just (a, s)
-  (Parser f) >>= k = Parser $ \s -> do
-    (a, s') <- f s
-    parse (k a) s'
+  return a = Parser $ \s is -> Just (a, s, is)
+  (Parser f) >>= k = Parser $ \s is -> do
+    (a, s', is') <- f s is
+    let (Parser g) = k a
+    g s' is'
     
 instance Applicative Parser where
   pure = return
@@ -25,9 +39,15 @@ instance Functor Parser where
   fmap = ap . return
   
 instance Alternative Parser where
-  empty = Parser $ \_ -> Nothing
-  (Parser f) <|> (Parser g) = Parser $ \s -> f s <|> g s
+  empty = Parser $ \_ _ -> Nothing
+  (Parser f) <|> (Parser g) = Parser $ \s is -> f s is <|> g s is
 
+data EmptySequence 
+  = AllowZero
+  | RequireOne
+  | Require Int -- exactly n
+  deriving (Eq,Show)  
+  
 (<&&>) :: Applicative f => f Bool -> f Bool -> f Bool
 p <&&> q = pure (&&) <*> p <*> q
 
@@ -35,46 +55,62 @@ p <&&> q = pure (&&) <*> p <*> q
 p <||> q = pure (||) <*> p <*> q
 
 pch :: (Char -> Bool) -> Parser Char
-pch p = Parser $ \case 
-    (c:cs) | p c -> Just (c, cs)
+pch p = Parser $ \s is -> case s of
+    (c:cs) | p c -> Just (c, cs, is)
     _ -> Nothing
-
+    
 plit :: String -> Parser ()
 plit = mapM_ (pch . (==))
 
+pblock :: Parser a -> Parser [a]
+pblock p = do
+  oldLvl <- getLvl
+  peol
+  sps <- many (pch $ isSpace <&&> (/='\n'))
+  let i = length sps
+  guard (i > oldLvl)
+  putLvl i
+  x  <- p
+  xs <- many $ peol *> pspace' (Require i) *> p
+  putLvl oldLvl
+  return (x : xs)
+
+pseq :: Parser a -> EmptySequence -> Parser [a]
+pseq p = \case
+  (Require n) -> do 
+    sps <- many p
+    guard (length sps == n)
+    return sps
+  AllowZero   -> many p
+  RequireOne  -> some p
+
+pspace' :: EmptySequence -> Parser ()
+pspace' = (() <$) . pseq (pch $ isSpace <&&> (/='\n')) 
+  
 pspace :: Parser ()
-pspace = many (pch $ isSpace <&&> (/='\n')) $> ()
-               
-around :: Parser a -> Parser b -> Parser b
-around s p = s *> p <* s
+pspace = pspace' AllowZero
+
+psep :: EmptySequence -> Parser () -> Parser a -> Parser [a]
+psep e s p = (:) <$> p <*> many (id <$ s <*> p)
+ <|> (if (e == AllowZero) then pure [] else empty)
 
 peol ::Parser ()
 peol = pch (=='\n') $> ()
 
-pkeyword :: Parser a -> Parser a
-pkeyword = (pch (=='@') *>)
+pkey :: Parser a -> Parser a
+pkey = (pch (=='@') *>)
+
+pcomment' :: EmptySequence -> Parser ()
+pcomment' = (() <$). pseq (pch $ (/= '@') <&&> (/='\n'))  
 
 pcomment :: Parser ()
-pcomment = many (pch $ (/= '@') <&&> (/= '\n')) $> ()
+pcomment = pcomment' AllowZero
 
 pident :: Parser String
-pident = pure (:) <*> pch isAlphaNum <*> many (pch $ isAlphaNum <||> (=='_')) 
+pident = pure (:) <*> pch isAlphaNum <*> many (pch $ isAlphaNum <||> (=='_'))
 
-pTypedField :: Parser Description
-pTypedField =  pure Field <*> (pFieldHeader
-                               -- proper type
-                               <* pcomment `around` pkeyword (plit "number" <|> plit "Number") 
-                               <* peol)
-                          <*> pure Nat
-
-pFieldHeader :: Parser String
-pFieldHeader = pspace `around` pident <* pch (== ':')
-
-pArrayLitItem :: Parser () -- proper type
-pArrayLitItem = pspace `around` pch (== '-') *> pcomment *> peol
-
--- pArrayLit :: Parser Description
--- pArrayLit = pure 
-
-parseDescription :: String -> Maybe Description
-parseDescription = undefined
+pnumber :: Parser Int
+pnumber = optional psign >>= \x -> maybe id (const negate) x <$> ppos
+  where
+    psign = pch (== '-') <* pspace
+    ppos = foldl (\n -> (10*n +) . digitToInt) 0 <$> (some $ pch isDigit)

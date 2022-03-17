@@ -1,111 +1,88 @@
 module Matlab where
 
-import Expression
 import Data.List (intercalate)
-import Control.Monad.State
 
-class Display t where
-  display :: t -> String
-  displayIndent :: Int -> t -> String
-  
-  display = displayIndent 0
-  displayIndent n t = replicate n ' ' ++ display t
-    
-data Term 
+data Op 
+  = LessThan | Plus | Mul | Exp
+  deriving (Eq)
+
+instance Show Op where
+  show LessThan = " <= "
+  show Plus     = " + "
+  show Mul      = " * "
+  show Exp      = " ^ "
+
+addT :: Term -> Term -> Term
+t1 `addT` t2 = Infix Plus t1 t2
+
+minusT :: Term -> Term -> Term
+t1 `minusT` t2 = Infix Plus t1 (Neg t2)
+
+mulT :: Term -> Term -> Term
+t1 `mulT` t2 = Infix Mul t1 t2
+
+expT :: Term -> Term -> Term
+t1 `expT` t2 = Infix Exp t1 t2
+
+scientficExp :: Int -> Term
+scientficExp n =  Prim $ "1e" ++ show n
+
+data Term
   = IntLit Int
   | FloatLit Double
+  | Neg Term
   | BoolLit Bool
   | StringLit String
-  | Add Term Term
-  | Mul Term Term
-  | Neg Term
   | Var String
+  | App Term [Term]
+  | Infix Op Term Term
   | Prim String
-  | App (Term) [Term]
   | Index Term Term
   | CellIndex Term Term
   deriving (Show)
 
 data Expression
-  = NOP
-  | Expression :- Expression
-  | Term := Term
+  = Term := Term
   | For Term Term Term Expression
+  | If Term Expression
   deriving (Show)
 
+ifLt :: Term -> Term -> Expression -> Expression
+ifLt lht rht = If (Infix LessThan lht rht)
+
+indent :: Int -> String
+indent n = replicate n ' '
+
+class Display t where
+  display :: t -> String
+  displayIndent :: Int -> t -> String
+    
+  display = displayIndent 0
+  displayIndent n t = indent n ++ display t
+  
+  
 instance Display Term where
-  display (IntLit n) = show n
+  display (IntLit n) 
+    | n > 0  = show n
+    | otherwise = concat ["(", show n, ")"]
   display (FloatLit f) = show f
+  display (Neg t1)    = concat ["(", "-", display t1, ")"]
   display (BoolLit b) = show b
-  display (StringLit s) = s 
-  display (Add t1 t2) = "(" ++ display t1 ++ " + " ++ display t2 ++ ")"
-  display (Mul t1 t2) = display t1 ++ " * " ++ display t2
-  display (Neg t1) = "-" ++ display t1 
+  display (StringLit s) = show s
   display (Var s) = s
   display (Prim s) = s
-  display (App t1 args) = display t1 ++ "(" ++ intercalate "," (map display args) ++ ")"
-  display (Index t1 t2) = display t1 ++ "[" ++ display t2 ++ "]"
-  display (CellIndex t1 t2) = display t1 ++ "{" ++ display t2 ++ "}"
+  display (Infix op t1 t2) = concat [display t1, show op, display t2]
+  display (App t1 args) = concat [display t1, "(", intercalate "," (map display args), ")"]
+  display (Index t1 t2) = concat [display t1, "[", display t2, "]"]
+  display (CellIndex t1 t2) = concat [display t1, "{", display t2, "}"]
   
-instance Display Expression where  
-  displayIndent n = \case
-    NOP        -> ""
-    (e1 :- e2) -> displayIndent n e1 ++ displayIndent n e2
+
+instance Display Expression where
+   displayIndent n = \case    
     (t1 := t2) -> displayIndent n t1 ++ " = " ++ display t2 ++ ";\n"
-    (For i from to body) -> let ctrl = display i ++ " = " ++ display from ++ ":" ++ display to 
-                            in  indent ++ "for "  ++ ctrl ++ "\n" ++
-                                displayIndent (n + 4) body ++ 
-                                indent ++ "end\n"
-    where
-      indent = replicate n ' '
-
-exp1 = (Var "x") := (Index (Var "y") $ (Add (Var "x") (IntLit 5)))
-f = For (Var "i") (IntLit 1) (IntLit 5)
-
-data Env = Env 
-  { preamble :: Maybe Description
-  , postamble :: Maybe Description
-  , readPtr :: Term
-  , source  :: Term
-  , offset  :: Maybe Term
-  }
-
-  
-initEnv :: Env 
-initEnv = undefined 
-
-
-translate :: Description -> State Env Expression
-translate = tr . qualifyNames
-  where
-    tr :: QualifiedDescription -> State Env Expression
-    tr (Object _ fields) = do
-      exps <- mapM tr fields
-      pure $ foldl (:-) NOP exps
-    tr (Field name ty) = do
-      undefined
-    tr _ = undefined
-
-{-translateIn (Struct name fields) = do
-  f <- (mapM translateIn $ go name fields) 
-  pure $ Seq f
- where
-    go :: Name -> [Expression] -> [Expression]
-    go n fs = map (((n ++ ".") ++) `fmap`)  fs
-translateIn (Field name ty) = do
-  account for ty to generate 10^x * 
-  TrEnv{idx = idx, contents = c} <- get
-  let asn = assignWithIdx (Var name) c idx 
-  let inc = Assignment idx (Add idx $ IntT 1)  
-  pure $ Seq [asn, inc]
-
-translateIn (Vector name varE ty) = do
-  Env'{idx = idx, contents = c} <- get
-  let cmd = forAssign "i" (IntT 1) (Var $ getExprName varE) (Var name) c idx
-  pure cmd
- 
-translateIn (VectorLit name tys)  =  do
-  Env'{idx = idx, contents = c} <- get
-  let cmd = forAssign "i" (IntT 1) (IntT $ length tys) (Var name) c idx
-  pure cmd
--}
+    (For i from to body) -> 
+      let ctrl = display i ++ " = " ++ display from ++ ":" ++ display to 
+      in  indent n ++ "for "  ++ ctrl ++ "\n" ++
+          displayIndent (n + 4) body ++ 
+          indent n ++ "end\n"
+    (If c body) -> indent n ++ concat ["if ",  display c , "\n", displayIndent (n + 4) body, "end\n"]
