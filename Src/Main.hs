@@ -11,5 +11,5 @@ main = do
   let fp = case args of {(x :_) -> x; _ -> error "No file supplied"}
   contents <- readFile fp
   case translate $ parse pDesc contents initS of
-    Left err -> error err
+    Left err -> error $ show err
     Right res -> putStrLn res

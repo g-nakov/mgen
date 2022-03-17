@@ -4,41 +4,53 @@ module Translate where
 import Matlab
 import Description
 import Dimension
-import Data.List (intercalate)
 import Control.Monad.State
 import Control.Monad.Except
+
 import Data.Foldable
+import Data.List (intercalate)
+
 import Data.Map (Map)
-import Control.Arrow ( (>>>) )
 import qualified Data.Map as M
+import Data.Set (Set)
+import qualified Data.Set as S
+
+import Control.Arrow ( (>>>) )
+
 
 data Ty
   = O | A | F FieldType
-  deriving (Show, Eq)
+  deriving (Eq, Show)
 
 newtype CheckState = CheckState
   { fields :: Map [String] Ty
-  }
+  } 
 
 data TrState = TrState
   { offset :: Maybe Term
-  , locals :: [[String]]
+  , locals :: Set [String]
   }
 
-fromCheckState :: CheckState -> TrState
-fromCheckState cs = TrState Nothing (M.keys $ fields cs)
+data Error 
+  = UnknownField [String]
+  | ExistingField [String]
+  | WrongType [String] Ty
+  deriving (Eq, Show)
 
-type Checked a = StateT CheckState (Except String) a
+fromCheckState :: CheckState -> TrState
+fromCheckState cs = TrState Nothing (S.fromList $ M.keys $ fields cs)
+
+type Checked a = StateT CheckState (Except Error) a
 type Translated a = State TrState a
 
 resolve :: IndexExpr -> [String] -> Checked IndexExpr
 resolve (FieldAccess ns) sc = do
-   CheckState{fields = fs} <- get
+   fs <- gets fields
    let n =  map (++ ns) (inits sc)
-   case asum $ map (\k -> (k,) <$> k `M.lookup` fs) n of
-     Nothing ->  throwError "Unknown Index field"
+   case asum [(k,) <$> k `M.lookup` fs | k <- n] of
+     Nothing ->  throwError $ UnknownField ns
      Just (qname, F Nat) -> pure $ FieldAccess qname
-     Just _ -> throwError "Wrong field type"
+     Just (qname, ty) -> throwError $ WrongType qname ty
   where
     inits :: [a] -> [[a]]
     inits [] = [[]]
@@ -65,22 +77,20 @@ check = go [] where
 
   checkName :: [String] -> String -> Ty -> Checked [String]
   checkName sc name ty = do
-    CheckState{fields = fs} <- get
+    fs <- gets fields
     let qname = sc ++ [name]
     case qname `M.lookup` fs of
-      Just _ -> throwError $ "Field already defined " ++ name
+      Just _ -> throwError $ ExistingField qname
       Nothing -> do
         writeField qname ty
         pure qname
 
-  writeField f t =  modify $
-      \st -> st{fields = M.insert f t $ fields st}
-
-
+  writeField f t =
+    modify $ \st -> st{fields = M.insert f t $ fields st}
 
 freshVar :: String -> Translated Term
 freshVar s = do
-  TrState{locals = ls} <- get
+  ls <- gets locals
   if [s] `elem` ls
     then freshVar (s++"0")
     else pure $ Var s
@@ -169,13 +179,13 @@ translate' desc = do
     writeOffset t = modify $ \st -> st{offset = t}
 
     getOffsetAssignment = do
-      TrState{offset = of'} <- get
+      of' <- gets offset
       readPtr <- freshVar "readPtr"
       pure $ case of' of
         Nothing  -> []
         (Just t) -> [readPtr := (readPtr `addT` t)]
 
-translate :: Description -> Either String String
+translate :: Description -> Either Error String
 translate = fmap (concatMap display .
                  (\(d, st)-> evalState (translate' d) $ fromCheckState st))
             . runExcept . (`runStateT` CheckState M.empty)
