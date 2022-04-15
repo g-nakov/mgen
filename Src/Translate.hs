@@ -4,6 +4,7 @@ module Translate where
 import Matlab
 import Description
 import Dimension
+import Optimise
 import Control.Monad.State
 import Control.Monad.Except
 
@@ -16,7 +17,6 @@ import Data.Set (Set)
 import qualified Data.Set as S
 
 import Control.Arrow ( (>>>) )
-
 
 data Ty
   = O | A | F FieldType
@@ -31,7 +31,7 @@ data TrState = TrState
   , locals :: Set [String]
   }
 
-data Error 
+data TrError 
   = UnknownField [String]
   | ExistingField [String]
   | WrongType [String] Ty
@@ -40,7 +40,7 @@ data Error
 fromCheckState :: CheckState -> TrState
 fromCheckState cs = TrState Nothing (S.fromList $ M.keys $ fields cs)
 
-type Checked a = StateT CheckState (Except Error) a
+type Checked a = StateT CheckState (Except TrError) a
 type Translated a = State TrState a
 
 resolve :: IndexExpr -> [String] -> Checked IndexExpr
@@ -132,7 +132,7 @@ translateArray t (Lit n) tys = do
       i <- freshVar "i"
       let from = IntLit $ len + 1
           to   = IntLit n
-          body = Index t i := adjustTerm (Index src (readPtr `addT` i)) ty
+          body = \i -> [Index t i := adjustTerm (Index src (readPtr `addT` i)) ty]
       pure (Just to , sepStms ++ [For i from to body])
 
 translateArray t (FieldAccess ns) tys = do
@@ -149,7 +149,7 @@ translateArray t (FieldAccess ns) tys = do
       i <- freshVar "i"
       let from = IntLit $ len + 1
           to   = var
-          body = Index t i := adjustTerm (Index src (readPtr `addT` i)) ty
+          body = \i -> [Index t i := adjustTerm (Index src (readPtr `addT` i)) ty]
       pure (Just to , sepStms ++ [For i from to body])
 
 translate' :: DescriptionF [String] -> Translated [Expression]
@@ -183,10 +183,10 @@ translate' desc = do
       readPtr <- freshVar "readPtr"
       pure $ case of' of
         Nothing  -> []
-        (Just t) -> [readPtr := (readPtr `addT` t)]
+        (Just t) -> [ReadOffset readPtr t]
 
-translate :: Description -> Either Error String
-translate = fmap (concatMap display .
+translate :: Description -> Either TrError String
+translate = fmap (concatMap display . optimise . 
                  (\(d, st)-> evalState (translate' d) $ fromCheckState st))
             . runExcept . (`runStateT` CheckState M.empty)
             . check

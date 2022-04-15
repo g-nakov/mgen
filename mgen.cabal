@@ -18,14 +18,16 @@ library
                        Dimension,
                        Matlab,
                        Parser,
-                       Translate
+                       Translate,
+                       Optimise
   build-depends:       base >=4.12, containers, mtl
   hs-source-dirs:      Src
   default-language:    Haskell2010
   ghc-options:         -Wall
   default-extensions:  DeriveFunctor,
                        LambdaCase,
-                       TupleSections
+                       TupleSections,
+                       GADTs
 
 executable mgen
   main-is:             Src/Main.hs

@@ -1,0 +1,12 @@
+test :
+  field : @Int
+  array1 : @mm
+    - one
+    - two
+    - three
+  vec1 : @field many elements of @mm
+  i : @field many elements of @m
+  array2 : @Ks
+    - one
+    - two
+    - three
