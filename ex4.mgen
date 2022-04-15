@@ -1,0 +1,12 @@
+ivals :
+  nlayer : contains the @number of layers (2 or 3) in the sample
+  lams   : array containing thermal conductivities of the layer @nlayer (in @kg s^-3 m K^-1).
+  kappas : contains radius of
+      - sample (in @mm)
+      - laser (in @mm)
+      - measuring (in @mm)
+  Rs: Heat transfer coefficient for losses in  @kg s^-3 m K^-1
+      - from front face
+      - from rear face
+      - curved side face
+  tflash : duration of laser flash in @ms
