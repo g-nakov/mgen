@@ -191,12 +191,14 @@ addPreamble (Object ns _) = do
   fileh    <- freshVar "f1"
   contents <- freshVar "c1"
   src      <- freshVar "src"
+  readPtr  <- freshVar "readPtr"
   let retRes = "function " ++ intercalate  "." ns
   let body = [ Emb retRes := App (Emb "getinputsfromfile") [filename],
               fileh := App (Emb "fopen") [filename],
               contents := App (Emb "textscan") [fileh, Emb "`%f`"],
               src := CellIndex contents (IntLit  1),
-              Statement $ App (Emb "fclose") [fileh]]
+              Statement $ App (Emb "fclose") [fileh],
+              readPtr := IntLit 1]
   pure body
 addPreamble _ = pure []
 
