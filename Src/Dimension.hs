@@ -34,7 +34,34 @@ baseUnitNames =
   ,(Amp, "A")
   ,(Kel, "K")
   ,(Mol, "mol")
-  ,(Cd, "cd")]
+  ,(Cd, "cd")
+  ]
+
+unitNames :: [(DerivedUnit, String)]
+unitNames = map (\ (b, n) -> ([(0, b, 1)], n)) baseUnitNames
+            ++
+            [ ([(0, One, 1)], "rad")
+            , ([(0, One, 1)], "sr")
+            , ([(0, Sec, -1)], "Hz")
+            , ([(3, Gram, 1), (0, Meter, 1), (0, Sec, -2)], "N")
+            , ([(3, Gram, 1), (0, Meter, -1), (0, Sec, -2)], "Pa")
+            , ([(3, Gram, 1), (0, Meter, 2), (0, Sec, -2)], "J")
+            , ([(3, Gram, 1), (0, Meter, 2), (0, Sec, -3)], "W")
+            , ([(0, Sec, 1), (0, Amp, 1)], "C")
+            , ([(3, Gram, 1), (0, Meter, 2), (0, Sec, -3), (0, Amp, -1)], "V")
+            , ([(3, Gram, -1), (0, Meter, -2), (0, Sec, 4), (0, Amp, 2)], "F")
+            , ([(3, Gram, 1), (0, Meter, 2), (0, Sec, -3), (0, Amp, -2)], "Ω")
+            , ([(3, Gram, -1), (0, Meter, -2), (0, Sec, 3), (0, Amp, 2)], "S")
+            , ([(3, Gram, 1), (0, Meter, 2), (0, Sec, -2), (0, Amp, -1)], "Wb")
+            , ([(3, Gram, 1), (0, Sec, -2), (0, Amp, -1)], "T")
+            , ([(3, Gram, 1), (0, Meter, 2), (0, Sec, -2), (0, Amp, -2)], "H")
+            , ([(0, Cd, 1), (0, One, 1)], "lm")
+            , ([(0, Cd, 1), (0, One, 1), (0, Meter, -2)], "lx")
+            , ([(0, Sec, -1)], "Bq")
+            , ([(0, Meter, 2), (0, Sec, -2)], "Gy")
+            , ([(0, Meter, 2), (0, Sec, -2)], "Sv")
+            , ([(0, Mol, 1), (0, Sec, -1)], "kat")
+            ]
 
 prefixNames :: [(String, MetricPrefix)]
 prefixNames =
@@ -45,7 +72,8 @@ prefixNames =
   ,("d",  -1), ("c",  -2), ("m",  -3)
   ,("μ",  -6), ("n",  -9), ("p", -12)
   ,("f", -15), ("a", -18), ("z", -21)
-  ,("y", -24)]
+  ,("y", -24)
+  ]
 
 instance Show BaseUnit where
   show n = fromMaybe "impossible" $ lookup n baseUnitNames
@@ -80,28 +108,25 @@ metricPrefix (DerivedUnitNF (m , _)) = m
 printUnit :: DerivedUnit -> String
 printUnit =  show . normalise
 
-pexponent :: Parser a -> Parser (a, Exponent)
-pexponent p = (,) <$> p <* (pspace *> pch (=='^') <* pspace) <*> pn
-  where pn = pnumber  <|> (pch (=='(') *> pspace *> pnumber <* pspace <* pch (== ')'))
+pprefix :: Parser MetricPrefix
+pprefix = asum [plit pr Data.Functor.$> v | (pr,v) <- prefixNames]
 
+punitname :: Parser DerivedUnit
+punitname = asum [plit n $> u | (u,n) <- unitNames]
 
-pWithPrefix :: Parser BaseUnit -> Parser (MetricPrefix , BaseUnit)
-pWithPrefix p = (,) <$> pmp <*> p
-                <|> (0,) <$> p
+pexp :: Parser Exponent
+pexp = pch (=='^') *> pspace *> (pnumber  <|> (pch (=='(') *> pspace *> pnumber <* pspace <* pch (== ')')))
+
+pderivedunit :: Parser DerivedUnit
+pderivedunit = mkUnit <$>
+               ((,) <$> pprefix <*> punitname
+           <|> (0,) <$> punitname)
+           <*> optional pexp
   where
-    pmp =  asum [plit pr Data.Functor.$> v | (pr,v) <- prefixNames]
-
-
-pUnit :: Parser (MetricPrefix, BaseUnit, Exponent)
-pUnit = f <$> pexponent (pWithPrefix pbu)
-        <|> g <$> pWithPrefix pbu
-        <|> (,One,1) <$> pn
-  where
-    f ((p,u),e) = (p, u, e)
-    g (p, u)    = (p, u, 1)
-    pbu = asum [plit n $> u | (u,n) <- baseUnitNames]
-    pn = (snd <$> pexponent (plit "10")) <|> (1 <$ plit "10") <|> (0 <$ plit "1")
+    mkUnit (pre, unit) exp = let
+      exp' = maybe 1 id exp
+      in map (\ (p, u, e) -> (pre + p, u, exp' * e)) unit
 
 pDerivedUnit :: Parser DerivedUnitNF
-pDerivedUnit = normalise <$> psep RequireOne s pUnit
+pDerivedUnit = normalise . fold <$> psep RequireOne s pderivedunit
   where s = () <$ (pspace *> pch (== '*') <* pspace) <|> pspace
