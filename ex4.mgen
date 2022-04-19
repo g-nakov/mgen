@@ -9,7 +9,7 @@ ivals :
       - from front face
       - from rear face
       - curved side face
-  cps : specific heat capacities in @W m^-1 K^-1
+  cps : specific heat capacities in @J kg^-1 K^-1
       - of the front face
       - of the rear face
       - of the curved side face
