@@ -29,6 +29,7 @@ optimise' ops p =
 
 constantfold :: Program -> Program
 constantfold = fmap go where
+  go (Statement t1) = Statement $ cfold t1
   go (t1 := t2) = t1 := cfold t2
   go (For t1 t2 t3 b1) = For (cfold t1) (cfold t2) (cfold t3) (\ i -> constantfold (b1 i))
   go (If cs es) = If (map (\ (t, bs) -> (cfold t, constantfold bs)) cs) (constantfold es)
@@ -49,6 +50,8 @@ constantfold = fmap go where
   cfold (Index t1 t2) = Index (cfold t1) (cfold t2)
   cfold (Var x) = Var x
   cfold (Emb f) = Emb f
+  cfold (CellIndex t1 t2) = CellIndex (cfold t1) (cfold t2)
+  cfold (App f args) = App (cfold f) (map cfold args) 
 
 singleLoop :: Program -> Program
 singleLoop = concatMap $ \case

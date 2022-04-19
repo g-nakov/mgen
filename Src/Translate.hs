@@ -24,14 +24,14 @@ data Ty
 
 newtype CheckState = CheckState
   { fields :: Map [String] Ty
-  } 
+  }
 
 data TrState = TrState
   { offset :: Maybe Term
   , locals :: Set [String]
   }
 
-data TrError 
+data TrError
   = UnknownField [String]
   | ExistingField [String]
   | WrongType [String] Ty
@@ -185,8 +185,26 @@ translate' desc = do
         Nothing  -> []
         (Just t) -> [ReadOffset readPtr t]
 
+addPreamble :: DescriptionF [String] ->  Translated [Expression]
+addPreamble (Object ns _) = do
+  filename <- freshVar "fname"
+  fileh    <- freshVar "f1"
+  contents <- freshVar "c1"
+  src      <- freshVar "src"
+  let retRes = "function " ++ intercalate  "." ns
+  let body = [ Emb retRes := App (Emb "getinputsfromfile") [filename],
+              fileh := App (Emb "fopen") [filename],
+              contents := App (Emb "textscan") [fileh, Emb "`%f`"],
+              src := CellIndex contents (IntLit  1),
+              Statement $ App (Emb "fclose") [fileh]]
+  pure body
+addPreamble _ = pure []
+
+
 translate :: Description -> Either TrError String
-translate = fmap (concatMap display . optimise . 
-                 (\(d, st)-> evalState (translate' d) $ fromCheckState st))
+translate = fmap (concatMap display . optimise .
+                 (\(d , st)-> let st' = fromCheckState st in
+                              evalState (addPreamble d) st' 
+                              ++ evalState (translate' d) st'))
             . runExcept . (`runStateT` CheckState M.empty)
             . check
