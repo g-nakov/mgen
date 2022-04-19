@@ -1,5 +1,5 @@
 module Dimension
-  (DerivedUnitNF(DerivedUnitNF), pDerivedUnit, metricPrefix) where
+  (DerivedUnitNF(DerivedUnitNF), pDerivedUnit, metricPrefix, printUnit) where
 
 import Parser
 

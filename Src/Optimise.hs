@@ -7,7 +7,7 @@ import Data.Function ((&))
 type Program = [Expression]
 
 optimise :: Program -> Program
-optimise = optimise' [fuseLoop, fuseOffset, constantfold]
+optimise = optimise' [fuseLoop, fuseOffset, constantfold, singleLoop]
 
 optimise' :: [Program -> Program] -> Program -> Program
 optimise' ops p =
@@ -49,6 +49,13 @@ constantfold = fmap go where
   cfold (Index t1 t2) = Index (cfold t1) (cfold t2)
   cfold (Var x) = Var x
   cfold (Emb f) = Emb f
+
+singleLoop :: Program -> Program
+singleLoop = concatMap $ \case
+  For i f1 t1 b1 | f1 == t1 -> b1 f1
+                 | otherwise -> [For i f1 t1 (\ j -> singleLoop (b1 j))]
+  If cs es -> [If (map (\ (t, bs) -> (t, singleLoop bs)) cs) (singleLoop es)]
+  x -> [x]
 
 fuseLoop :: Program -> Program
 --fuse ps = traverse
