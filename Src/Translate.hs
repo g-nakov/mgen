@@ -132,7 +132,7 @@ translateArray t (Lit n) tys = do
       i <- freshVar "i"
       let from = IntLit $ len + 1
           to   = IntLit n
-          body = \i -> [Index t i := adjustTerm (Index src (readPtr `addT` i)) ty]
+          body = \j -> [Index t j := adjustTerm (Index src (readPtr `addT` j)) ty]
       pure (Just to , sepStms ++ [For i from to body])
 
 translateArray t (FieldAccess ns) tys = do
@@ -149,7 +149,7 @@ translateArray t (FieldAccess ns) tys = do
       i <- freshVar "i"
       let from = IntLit $ len + 1
           to   = var
-          body = \i -> [Index t i := adjustTerm (Index src (readPtr `addT` i)) ty]
+          body = \j -> [Index t j := adjustTerm (Index src (readPtr `addT` j)) ty]
       pure (Just to , sepStms ++ [For i from to body])
 
 translate' :: DescriptionF [String] -> Translated [Expression]
