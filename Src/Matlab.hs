@@ -14,6 +14,7 @@ instance Show BinaryOp where
 
 data Term
   = IntLit Int
+  | BoolLit Bool
   | Neg Term
   | Bin BinaryOp Term Term
   | Var String
@@ -47,7 +48,15 @@ instance Show Expression where
   show (For i f t b) = "For " ++ intercalate ", " (map show [i, f, t]) ++ "\n"
   show (If _ _) = "If _ _\n"
   show (ReadOffset t1 t2) = "ReadOffset " ++ show (t1 := (t1 `addT` t2))
-  
+
+instance Eq Expression where
+  (t1 := t2) == (t1' := t2') = t1 == t1' && t2 == t2'
+  (For t1 t2 t3 b1) ==   (For t1' t2' t3' b1') =
+    t1 == t1' && t2 == t2' && t3 == t3' && (b1 (Var "__i") == b1' (Var "__i"))
+  (If cs es) == (If cs' es') = cs == cs' && es == es'
+  (ReadOffset t1 t2) == (ReadOffset t1' t2') = t1 == t1' && t2 == t2'
+  _ == _ = False
+
 ifLt :: Term -> Term -> Expression -> Expression
 ifLt lht rht bd = If [(Bin LessThan lht rht, [bd])] []
 
@@ -65,6 +74,8 @@ instance Display Term where
   display (IntLit n) 
     | n > 0  = show n
     | otherwise = concat ["(", show n, ")"]
+  display (BoolLit True) = "true"
+  display (BoolLit False) = "false"
   display (Neg t1)    = concat ["( -", display t1, ")"]
   display (Var s) = s
   display (Emb s) = s
