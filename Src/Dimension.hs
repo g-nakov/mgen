@@ -7,10 +7,10 @@ import qualified Data.Map as M
 import Control.Applicative
 import Control.Monad.State
 import Data.Foldable
-import Data.List
-import Data.Bifunctor
-import Data.Functor
-import Data.Maybe
+import Data.List ( sortOn )
+import Data.Bifunctor ( Bifunctor(bimap) )
+import Data.Functor ( ($>) )
+import Data.Maybe ( fromMaybe )
 
 data BaseUnit
   = One
@@ -95,8 +95,7 @@ instance Show DerivedUnitNF where
 normalise :: DerivedUnit -> DerivedUnitNF
 normalise us =
   let initS' = (0, M.empty)
-      f = \(pr, u, e) -> modify $
-            bimap ((pr * e) +) (M.alter (Just . maybe e (e +)) u)
+      f (pr, u, e) = modify $ bimap ((pr * e) +) (M.alter (Just . maybe e (e +)) u)
       (ones, mus) = execState (traverse_ f us) initS'
       keep (u, e) = u /= One && e /= 0
       g = filter keep . M.foldrWithKey (curry (:)) []
@@ -123,10 +122,10 @@ pderivedunit = mkUnit <$>
            <|> (0,) <$> punitname)
            <*> optional pexp
   where
-    mkUnit (pre, unit) exp = let
-      exp' = maybe 1 id exp
+    mkUnit (pre, unit) xp =
+      let exp' = fromMaybe 1 xp
       in map (\ (p, u, e) -> (pre + p, u, exp' * e)) unit
 
 pDerivedUnit :: Parser DerivedUnitNF
 pDerivedUnit = normalise . fold <$> psep RequireOne s pderivedunit
-  where s = () <$ (pspace *> pch (== '*') <* pspace) <|> pspace
+  where s = void (pspace *> pch (== '*') <* pspace) <|> pspace

@@ -21,18 +21,18 @@ parse (Parser f) s l = case f s l of
   (Just (a, [], _)) -> a
   _          -> error "Error parsing"
 
-initS :: IndentLvl
-initS = 0
+initState :: IndentLvl
+initState = 0
 
 instance Monad Parser where
-  return a = Parser $ \s is -> Just (a, s, is)
+  return = pure
   (Parser f) >>= k = Parser $ \s is -> do
     (a, s', is') <- f s is
     let (Parser g) = k a
     g s' is'
     
 instance Applicative Parser where
-  pure = return
+  pure a = Parser $ \s is -> Just (a, s, is)
   (<*>) = ap
 
 instance Functor Parser where
@@ -49,10 +49,10 @@ data EmptySequence
   deriving (Eq,Show)  
   
 (<&&>) :: Applicative f => f Bool -> f Bool -> f Bool
-p <&&> q = pure (&&) <*> p <*> q
+p <&&> q = (&&) <$> p <*> q
 
 (<||>) :: Applicative f => f Bool -> f Bool -> f Bool
-p <||> q = pure (||) <*> p <*> q
+p <||> q = (||) <$> p <*> q
 
 pch :: (Char -> Bool) -> Parser Char
 pch p = Parser $ \s is -> case s of
@@ -92,7 +92,7 @@ pspace = pspace' AllowZero
 
 psep :: EmptySequence -> Parser () -> Parser a -> Parser [a]
 psep e s p = (:) <$> p <*> many (id <$ s <*> p)
- <|> (if (e == AllowZero) then pure [] else empty)
+ <|> (if e == AllowZero then pure [] else empty)
 
 peol ::Parser ()
 peol = pch (=='\n') $> ()
@@ -107,10 +107,10 @@ pcomment :: Parser ()
 pcomment = pcomment' AllowZero
 
 pident :: Parser String
-pident = pure (:) <*> pch isAlphaNum <*> many (pch $ isAlphaNum <||> (=='_'))
+pident =  (:) <$> pch isLower <*> many (pch $ isAlphaNum <||> (=='_'))
 
 pnumber :: Parser Int
 pnumber = optional psign >>= \x -> maybe id (const negate) x <$> ppos
   where
     psign = pch (== '-') <* pspace
-    ppos = foldl (\n -> (10*n +) . digitToInt) 0 <$> (some $ pch isDigit)
+    ppos = foldl (\n -> (10*n +) . digitToInt) 0 <$> some (pch isDigit)

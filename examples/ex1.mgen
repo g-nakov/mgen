@@ -13,6 +13,8 @@ nesting :
       - laser (in @mm)
       - measuring (in @km)
     tflash : duration of laser flash in @ms
+    ultimate_nesting :
+      not_a_field : @number
   field : @number
   another_nesting :
      array : @input.nlayer in @mm

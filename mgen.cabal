@@ -1,4 +1,4 @@
-cabal-version:       2.2
+Cabal-version:       2.2
 
 name:                mgen
 version:             0.1.0.0
@@ -14,23 +14,36 @@ build-type:          Simple
 extra-source-files:  CHANGELOG.md
 
 library
-  exposed-modules:     Description,
-                       Dimension,
-                       Matlab,
-                       Parser,
-                       Translate,
-                       Optimise
-  build-depends:       base >=4.12, containers, mtl
-  hs-source-dirs:      Src
-  default-language:    Haskell2010
-  ghc-options:         -Wall
-  default-extensions:  DeriveFunctor,
-                       LambdaCase,
-                       TupleSections,
-                       GADTs
-
+  exposed-modules:    Description,
+                      Dimension,
+                      Expression
+                      Matlab,
+                      Parser,
+                      Python,
+                      Translate,
+                      TranslateContext,
+                      Optimise,
+                      Output,
+                      Utils
+                      
+  build-depends:      base >=4.12,
+                      containers,
+                      mtl,
+                      optparse-applicative
+  hs-source-dirs:     Src
+  default-language:   Haskell2010
+  ghc-options:        -Wall
+  default-extensions: DeriveFunctor,
+                      LambdaCase,
+                      TupleSections,
+                      GADTs,
+                      DataKinds,
+                      ScopedTypeVariables
+                      
 executable mgen
-  main-is:             Src/Main.hs
-  build-depends:       base >=4.12, mgen
-  default-language:    Haskell2010
-  ghc-options:         -Wall
+  main-is:            Src/Main.hs
+  build-depends:      base >=4.12,
+                      mgen,
+                      optparse-applicative
+  default-language:   Haskell2010
+  ghc-options:        -Wall

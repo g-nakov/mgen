@@ -1,10 +1,8 @@
 module Optimise where
 
-import Matlab
-import Debug.Trace
+import Expression
 import Data.Function ((&))
-
-type Program = [Expression]
+import Data.Bifunctor (bimap, second)
 
 optimise :: Program -> Program
 optimise = optimise' [fuseLoop, fuseOffset, constantfold, singleLoop]
@@ -14,25 +12,12 @@ optimise' ops p =
   let p' = foldl (&) p ops
   in {-trace (show p') $-} if p == p' then p' else optimise' ops p'
 
-{-
- i := 1 to 3
- i := 3 to 5
--}
-
-{-
- i := 1 to 3
- ...
- offset = offset + 3;
- ...
- i := 1 to 3
--}
-
 constantfold :: Program -> Program
 constantfold = fmap go where
   go (Statement t1) = Statement $ cfold t1
   go (t1 := t2) = t1 := cfold t2
-  go (For t1 t2 t3 b1) = For (cfold t1) (cfold t2) (cfold t3) (\ i -> constantfold (b1 i))
-  go (If cs es) = If (map (\ (t, bs) -> (cfold t, constantfold bs)) cs) (constantfold es)
+  go (For t1 t2 t3 b1) = For (cfold t1) (cfold t2) (cfold t3) (constantfold . b1)
+  go (If cs es) = If (map (bimap cfold constantfold) cs) (constantfold es)
   go (ReadOffset t1 t2) = ReadOffset (cfold t1) (cfold t2)
 
   cfold (IntLit i) = IntLit i
@@ -51,13 +36,14 @@ constantfold = fmap go where
   cfold (Var x) = Var x
   cfold (Emb f) = Emb f
   cfold (CellIndex t1 t2) = CellIndex (cfold t1) (cfold t2)
-  cfold (App f args) = App (cfold f) (map cfold args) 
+  cfold (App f args) = App (cfold f) (map cfold args)
+  cfold (Cast t ty) = Cast (cfold t) ty
 
 singleLoop :: Program -> Program
 singleLoop = concatMap $ \case
   For i f1 t1 b1 | f1 == t1 -> b1 f1
-                 | otherwise -> [For i f1 t1 (\ j -> singleLoop (b1 j))]
-  If cs es -> [If (map (\ (t, bs) -> (t, singleLoop bs)) cs) (singleLoop es)]
+                 | otherwise -> [For i f1 t1 (singleLoop . b1)]
+  If cs es -> [If (map (second singleLoop) cs) (singleLoop es)]
   x -> [x]
 
 fuseLoop :: Program -> Program
@@ -65,7 +51,7 @@ fuseLoop :: Program -> Program
 fuseLoop [] = []
 fuseLoop ((For i f1 t1 b1) : (ReadOffset c1 off1) : (For _ f2 t2 b2) : ps)
   | f1 == f2 && t1 == t2 =
-    let bd j = b1 j ++ b2 (j `addT` off1)
+    let bd j = b1 j ++ b2 (j <++> off1)
         newLoop = [For i f1 t1 bd, ReadOffset c1 off1]
     in fuseLoop (newLoop ++ ps)
 fuseLoop (p : ps) = p : fuseLoop ps
@@ -73,5 +59,6 @@ fuseLoop (p : ps) = p : fuseLoop ps
 fuseOffset :: Program -> Program
 fuseOffset [] = []
 fuseOffset ((ReadOffset c1 o1) : (ReadOffset c2 o2) : ps)
-  | c1 == c2 = fuseOffset (ReadOffset c1 (o1 `addT` o2) : ps)
+  | c1 == c2 = fuseOffset (ReadOffset c1 (o1 <++> o2) : ps)
 fuseOffset (p : ps) = p : fuseOffset ps
+

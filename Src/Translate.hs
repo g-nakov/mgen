@@ -1,49 +1,23 @@
-{-# LANGUAGE  FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Translate where
 
-import Matlab
 import Description
 import Dimension
+import Expression
+import Matlab ( MatlabProgram(MatlabProgram), matlabStart )
+import Python ( PythonProgram(PythonProgram), pythonStart )
 import Optimise
+import Output
+import TranslateContext
 import Control.Monad.State
 import Control.Monad.Except
+import Utils
 
 import Data.Foldable
 import Data.List (intercalate)
+import qualified Data.Map as M 
 
-import Data.Map (Map)
-import qualified Data.Map as M
-import Data.Set (Set)
-import qualified Data.Set as S
-
-import Control.Arrow ( (>>>) )
-
-data Ty
-  = O | A | F FieldType
-  deriving (Eq, Show)
-
-newtype CheckState = CheckState
-  { fields :: Map [String] Ty
-  }
-
-data TrState = TrState
-  { offset :: Maybe Term
-  , locals :: Set [String]
-  }
-
-data TrError
-  = UnknownField [String]
-  | ExistingField [String]
-  | WrongType [String] Ty
-  deriving (Eq, Show)
-
-fromCheckState :: CheckState -> TrState
-fromCheckState cs = TrState Nothing (S.fromList $ M.keys $ fields cs)
-
-type Checked a = StateT CheckState (Except TrError) a
-type Translated a = State TrState a
-
-resolve :: IndexExpr -> [String] -> Checked IndexExpr
+resolve :: IndexExpr -> [String] -> Translated IndexExpr
 resolve (FieldAccess ns) sc = do
    fs <- gets fields
    let n =  map (++ ns) (inits sc)
@@ -52,14 +26,13 @@ resolve (FieldAccess ns) sc = do
      Just (qname, F Nat) -> pure $ FieldAccess qname
      Just (qname, ty) -> throwError $ WrongType qname ty
   where
-    inits :: [a] -> [[a]]
     inits [] = [[]]
     inits xs = xs : inits (init xs)
 resolve ie _ = pure ie
 
-check :: Description -> Checked (DescriptionF [String])
+check :: Description Name -> Translated (Description QualifiedName)
 check = go [] where
-  go :: [String] -> Description -> Checked (DescriptionF [String])
+  go :: [Name] -> Description Name -> Translated (Description QualifiedName)
   go sc (Object name fs) = do
     qname <- checkName sc name O
     mfields <- traverse (go $ sc ++ [name]) fs
@@ -75,138 +48,122 @@ check = go [] where
     qname <- checkName sc name A
     pure $ ArrayLit qname tys
 
-  checkName :: [String] -> String -> Ty -> Checked [String]
-  checkName sc name ty = do
+  checkName :: [Name] -> Name -> Ty -> Translated QualifiedName
+  checkName scope name ty = do
     fs <- gets fields
-    let qname = sc ++ [name]
+    let qname = scope ++ [name]
     case qname `M.lookup` fs of
       Just _ -> throwError $ ExistingField qname
       Nothing -> do
         writeField qname ty
+        updateBreakdown scope name ty
         pure qname
 
-  writeField f t =
-    modify $ \st -> st{fields = M.insert f t $ fields st}
-
-freshVar :: String -> Translated Term
-freshVar s = do
-  ls <- gets locals
-  if [s] `elem` ls
-    then freshVar (s++"0")
-    else pure $ Var s
-
+  writeField qname ty =
+    modify $ \st -> st{fields = M.insert qname ty $ fields st}
+ 
+  updateBreakdown scope name O =
+    let insertEmpty = M.insert (scope ++ [name]) emptyBreakdown
+        action = case scope of
+          [] -> id
+          _  -> M.adjust (\b -> b{objects = name : objects b}) scope 
+    in modify
+       $ \st -> st{breakdowns = action $ insertEmpty $ breakdowns st}
+  updateBreakdown scope name ty = 
+    let action = case ty of
+        { A -> M.adjust (\b -> b{arrays = name : arrays b}) scope
+        ; _ -> M.adjust (\b -> b{rest = name : rest b}) scope}
+    in modify $ \st -> st{breakdowns = action $ breakdowns st}
+    
+                    
 adjustTerm :: Term -> FieldType -> Term
-adjustTerm tm Nat = tm
-adjustTerm tm (Quantity q) =
-  case metricPrefix q of
-    0 -> tm
-    n -> scientficExp n `mulT` tm
-
-split :: Eq a => Bool -> [a] -> ([a], Maybe a)
-split collapse = reverse >>> \case
-   []         -> ([], Nothing)
-   l@(x : xs) ->
-    let (suffix, rprefix) = span (==x) xs
-    in case length suffix of
-        0 | collapse  -> (reverse l, Nothing)
-          | otherwise -> (reverse rprefix, Just x)
-        _ -> (reverse rprefix, Just x)
-
-pad :: Int -> [a] -> [a]
-pad _ [] = []
-pad 1 (x : _) = [x]
-pad n (x : xs) = x : pad (n - 1) xs
+adjustTerm tm Nat = Cast tm Nat
+adjustTerm tm ty@(Quantity q)
+  | metricPrefix q == 0 = Cast tm ty
+  | otherwise = scexp (metricPrefix q) <**> Cast tm ty
 
 translateArray :: Term -> IndexExpr -> [FieldType] -> Translated (Maybe Term, [Expression])
 translateArray _ _ [] = pure (Nothing , [])
 translateArray t (Lit n) tys = do
   readPtr <- freshVar "readPtr"
   src     <- freshVar "src"
+  start   <- startIndex
   let (separate, inLoop) = split False $ pad n tys
       len  = length separate
-      sepStms = [Index t i := adjustTerm (Index src (readPtr `addT` i)) ty
-                | (ty,i) <- zip separate $ map IntLit [1..]]
+      sepStms = [Index t i := adjustTerm (Index src (readPtr <++> i)) ty
+                | (ty,i) <- zip separate $ map IntLit [start..]]
   case inLoop of
     Nothing -> pure (Just (IntLit n) , sepStms)
     Just ty  -> do
       i <- freshVar "i"
-      let from = IntLit $ len + 1
+      let from = IntLit $ len + start
           to   = IntLit n
-          body = \j -> [Index t j := adjustTerm (Index src (readPtr `addT` j)) ty]
+          body j = [Index t j := adjustTerm (Index src (readPtr <++> j)) ty]
       pure (Just to , sepStms ++ [For i from to body])
 
 translateArray t (FieldAccess ns) tys = do
   readPtr <- freshVar "readPtr"
   src     <- freshVar "src"
+  start   <- startIndex
   let var = Var $ intercalate "." ns
       (separate, inLoop) = split False tys
       len  = length separate
-      sepStms = [ifLt i var (Index t i := adjustTerm (Index src (readPtr `addT` i)) ty)
-                | (ty,i) <- zip separate $ map IntLit [1..]]
+      sepStms = [ifLt i var (Index t i := adjustTerm (Index src (readPtr <++> i)) ty)
+                | (ty,i) <- zip separate $ map IntLit [start..]]
   case inLoop of
     Nothing -> pure (Just var , sepStms)
     Just ty  -> do
       i <- freshVar "i"
-      let from = IntLit $ len + 1
-          to   = var
-          body = \j -> [Index t j := adjustTerm (Index src (readPtr `addT` j)) ty]
+      let from   = IntLit $ len + start
+          to     = var
+          body j = [Index t j := adjustTerm (Index src (readPtr <++> j)) ty]
       pure (Just to , sepStms ++ [For i from to body])
 
-translate' :: DescriptionF [String] -> Translated [Expression]
+translate' :: Description QualifiedName -> Translated [Expression]
 translate' desc = do
-  oe   <- getOffsetAssignment
-  (off, exps) <- go desc
+  readPtr <- freshVar "readPtr"
+  oe   <- getOffsetAssignment readPtr
+  (off, exps) <- go readPtr desc
   writeOffset off
   pure $ oe ++ exps
   where
-    go (Object _ fs) = do
+    go _ (Object _ fs) = do
       xs <- traverse translate' fs
       pure (Nothing, concat xs)
-    go (Field ns ty) = do
+    go readPtr (Field ns ty) = do
       let var = Var $ intercalate "." ns
-      readPtr <- freshVar "readPtr"
       src     <- freshVar "src"
       let tm = adjustTerm (Index src readPtr) ty
       pure (Just $ IntLit 1 , [var := tm])
-    go (Array ns ind tys) =
+    go _ (Array ns ind tys) =
       let var = Var $ intercalate "." ns
       in translateArray var ind tys
-    go (ArrayLit ns tys) =
+    go _ (ArrayLit ns tys) =
       let var = Var $ intercalate "." ns
           len = length tys
       in translateArray var (Lit len) tys
 
     writeOffset t = modify $ \st -> st{offset = t}
 
-    getOffsetAssignment = do
-      of' <- gets offset
-      readPtr <- freshVar "readPtr"
-      pure $ case of' of
+    getOffsetAssignment readPtr = do
+      off' <- gets offset
+      pure $ case off' of
         Nothing  -> []
         (Just t) -> [ReadOffset readPtr t]
 
-addPreamble :: DescriptionF [String] ->  Translated [Expression]
-addPreamble (Object ns _) = do
-  filename <- freshVar "fname"
-  fileh    <- freshVar "f1"
-  contents <- freshVar "c1"
-  src      <- freshVar "src"
-  readPtr  <- freshVar "readPtr"
-  let retRes = "function " ++ intercalate  "." ns
-  let body = [ Emb retRes := App (Emb "getinputsfromfile") [filename],
-              fileh := App (Emb "fopen") [filename],
-              contents := App (Emb "textscan") [fileh, Emb "`%f`"],
-              src := CellIndex contents (IntLit  1),
-              Statement $ App (Emb "fclose") [fileh],
-              readPtr := IntLit 1]
-  pure body
-addPreamble _ = pure []
+mkDocument :: TargetLang -> Document
+mkDocument Matlab = MkDocument $ MatlabProgram []
+mkDocument Python = MkDocument $ PythonProgram []
 
+putStartIndex :: TargetLang -> Translated ()
+putStartIndex l =
+  let index = case l of { Matlab -> matlabStart ; Python -> pythonStart}
+  in modify $ \st -> st{startIdx = index}
 
-translate :: Description -> Either TrError String
-translate = fmap (concatMap display . optimise .
-                 (\(d , st)-> let st' = fromCheckState st in
-                              evalState (addPreamble d) st' 
-                              ++ evalState (translate' d) st'))
-            . runExcept . (`runStateT` CheckState M.empty)
-            . check
+translate :: TargetLang -> Description Name -> Either TrError String
+translate l x = let d = mkDocument l
+  in runExcept
+  $ fmap render
+  $ flip evalStateT initState
+  $ check x >>=
+    \y -> putStartIndex l >> translate' y >>= addPreamble d y . optimise

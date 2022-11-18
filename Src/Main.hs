@@ -1,15 +1,29 @@
 module Main where
 
-import System.Environment
 import Description
 import Parser
 import Translate (translate)
+import TranslateMonad ( TargetLang(Matlab) )
+import Options.Applicative
+
+data Conf = Conf
+  { srcFile :: String 
+  , tgtLang :: TargetLang
+  }
 
 main :: IO ()
 main = do
-  args <- getArgs
-  let fp = case args of {(x :_) -> x; _ -> error "No file supplied"}
-  contents <- readFile fp
-  case translate $ parse pDesc contents initS of
+  conf <- execParser pConf
+  contents <- readFile $ srcFile conf
+  case translate (tgtLang conf) (parse pDesc contents initState) of
     Left err -> error $ show err
     Right res -> putStrLn res
+ where
+  pConf = info
+          (Conf <$> argument str ( help "input description FILE" <> metavar "FILE")
+                  <*> option auto (long "lang" <> help "Target language"
+                                   <> showDefault <> value Matlab <> metavar "LANG")
+          <**> helper)
+          (fullDesc <> progDesc "Generate code for data input from using an mgen description file")  
+  
+

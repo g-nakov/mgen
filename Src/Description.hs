@@ -4,6 +4,7 @@ module Description where
 import Dimension
 import Parser
 import Control.Applicative
+import Control.Monad (void)
 
 data FieldType
   = Nat
@@ -15,29 +16,28 @@ data IndexExpr
   | FieldAccess [String]
   deriving (Show, Eq)
 
-data DescriptionF a
-  = Object a [DescriptionF a]
+data Description a
+  = Object a [Description a]
   | Field a FieldType
   | Array a IndexExpr [FieldType]
   | ArrayLit a [FieldType]
   deriving (Show, Functor, Foldable, Traversable)
 
-type Description = DescriptionF String
-type QualifiedDescription = DescriptionF [String]
+type Name = String
+type QualifiedName = [Name]
 
 pFieldType :: Parser FieldType
-pFieldType = pkey $  Nat <$ ln
-                 <|> Quantity <$> pDerivedUnit
+pFieldType = pkey $ Nat <$ pn <|> Quantity <$> pDerivedUnit
   where
-    ln = plit "number" <|> plit "Number" <|> plit "Int" <|> plit "int"
+    pn = asum $ plit <$> ["number", "Number", "Int", "int"]
 
 pHeader :: Parser String
 pHeader = pident <* pspace <* pch (== ':')
 
-pField :: Parser Description
+pField :: Parser (Description Name)
 pField = Field <$> pHeader <*> (pcomment *> pFieldType <* pcomment)
 
-pArrayLit :: Parser Description
+pArrayLit :: Parser (Description Name)
 pArrayLit = f <$> pHeader <*> (pcomment *> pFieldType <* pcomment) <*> pblock sItem
             <|> ArrayLit <$> (pHeader <* pcomment) <*> pblock tItem
   where
@@ -45,19 +45,19 @@ pArrayLit = f <$> pHeader <*> (pcomment *> pFieldType <* pcomment) <*> pblock sI
     sItem = pch (== '-') *> pcomment
     tItem = pch (== '-') *> pcomment *> pFieldType <* pcomment
 
-pArray :: Parser Description
+pArray :: Parser (Description Name)
 pArray = Array <$> pHeader <*> (pcomment *> pindex <* pcomment)
                            <*> ptypes <* pcomment
-  where ptypes = psep RequireOne (() <$ (pspace *> pch (== ',') <* pspace)) pFieldType
-        pindex = pkey $   Lit <$> pnumber
+  where ptypes = psep RequireOne (void (pspace *> pch (== ',') <* pspace)) pFieldType
+        pindex = pkey $ Lit <$> pnumber
                       <|> FieldAccess <$> psep RequireOne (plit ".") pident
 
-pObject :: Parser Description
+pObject :: Parser (Description Name)
 pObject = Object <$> pHeader <* pcomment <*> pblock pDescription
 
-pDescription :: Parser Description
-pDescription =  pArray <|> pArrayLit <|> pField <|> pObject
+pDescription :: Parser (Description Name)
+pDescription =  pArray <|> pArrayLit <|> pField <|> pObject 
 
-pDesc :: Parser Description
+pDesc :: Parser (Description Name)
 pDesc = ((many (pcomment' RequireOne *> peol) *> peol *> pObject) <|> pObject)
         <* optional (many (pcomment *> peol))
