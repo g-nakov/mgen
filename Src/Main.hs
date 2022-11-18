@@ -3,7 +3,7 @@ module Main where
 import Description
 import Parser
 import Translate (translate)
-import TranslateMonad ( TargetLang(Matlab) )
+import TranslateContext( TargetLang(Matlab) )
 import Options.Applicative
 
 data Conf = Conf
