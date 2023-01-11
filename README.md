@@ -6,7 +6,7 @@ Many metrology software packages come with careful descriptions of input formats
 
 Our approach is instead to make the description of the input format formal, so that it can be understood by a machine, which can then write the code for reading the inputs. 
 
-## Input Data format
+## Input data format
 An input is declared with its name, followed by a colon
 `:`, followed by its optional human-readable description.
 
