@@ -5,6 +5,7 @@ import Dimension
 import Parser
 import Control.Applicative
 import Control.Monad (void)
+import Data.Foldable
 
 data FieldType
   = Nat
