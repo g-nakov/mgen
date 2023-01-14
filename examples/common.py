@@ -10,6 +10,9 @@ class Ivals():
 
 
 ivals = Ivals()
+
+fname="common.in"
+
 with open(fname) as f1:
   src = f1.readlines()
   readPtr = 0

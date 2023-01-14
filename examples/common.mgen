@@ -13,4 +13,4 @@ ivals :
       - sample (in @cm)
       - laser (in @mm)
       - measuring (in @mm)
-  lams   : array of thermal conductivities of layer @nlayer (in @W m^-2 K^-1).
+  lams   : array of thermal conductivities of layer @nlayer (in @W m^-2 K^-1)

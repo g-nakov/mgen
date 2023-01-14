@@ -37,7 +37,7 @@ An input is either:
   arrayExample :
     - one @number
     - two in @mm
-    - three in @Km
+    - three in @km
   ```
   If all the elements are of the same type, the tag might be omitted and specified only once when declaring the name of the array.
   ```yaml
@@ -94,4 +94,4 @@ mgen --lang python desc.mgen
 
 
 ## Examples
-See full examples of input data specifications and the generated code in [examples](examples/).
+See full examples of input data specifications and the generated code in [examples](examples/). A detailed walkthrough of the Python code generation is also available as a Jupyter [notebook](examples/common.ipynb).
