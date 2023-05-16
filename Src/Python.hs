@@ -114,7 +114,7 @@ displayExp n = unlines . go n
                                  ++ makeIfs "elif " n xs
  
 instance Output PythonProgram where
-  addPreamble _ desc pr = do
+  addPreamble _ f desc pr = do
     cls <- makeStructs desc
     p <- preamble desc
     let p' = case p of

@@ -2,7 +2,7 @@ module Main where
 
 import Description
 import Parser
-import Translate (translate)
+import Translate (translateString)
 import TranslateContext( TargetLang(Matlab) )
 import Options.Applicative
 
@@ -15,7 +15,7 @@ main :: IO ()
 main = do
   conf <- execParser pConf
   contents <- readFile $ srcFile conf
-  case translate (tgtLang conf) (parse pDesc contents initState) of
+  case translateString (tgtLang conf) "getinputsfromfile" contents of
     Left err -> error $ show err
     Right res -> putStrLn res
  where
@@ -24,6 +24,6 @@ main = do
                   <*> option auto (long "lang" <> help "Target language"
                                    <> showDefault <> value Matlab <> metavar "LANG")
           <**> helper)
-          (fullDesc <> progDesc "Generate code for data input from using an mgen description file")  
+          (fullDesc <> progDesc "Generate code for data input from using an mgen description file")
   
 

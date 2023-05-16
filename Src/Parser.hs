@@ -16,10 +16,11 @@ getLvl = Parser $ \s il -> Just (il, s, il)
 putLvl :: IndentLvl -> Parser ()
 putLvl l = Parser $ \s _ -> Just ((), s, l)
 
-parse :: Parser a -> String -> IndentLvl -> a
+parse :: Parser a -> String -> IndentLvl -> Either String a
 parse (Parser f) s l = case f s l of
-  (Just (a, [], _)) -> a
-  _          -> error "Error parsing"
+  Just (a, "", _) -> Right a
+  Just (_, leftover, _) -> Left ("Leftover input: " ++ leftover)
+  Nothing -> Left "No parses"
 
 initState :: IndentLvl
 initState = 0

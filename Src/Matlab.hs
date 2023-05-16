@@ -12,22 +12,22 @@ newtype MatlabProgram = MatlabProgram { getProgram :: Program }
 matlabStart :: StartIndex
 matlabStart = 1
 
-preamble :: Description QualifiedName -> Translated Program
-preamble (Object ns _) = do
+preamble :: String -> Description QualifiedName -> Translated Program
+preamble funName (Object ns _) = do
   filename <- freshVar "fname"
   fileh    <- freshVar "f1"
   contents <- freshVar "c1"
   src      <- freshVar "src"
   readPtr  <- freshVar "readPtr"
   let retRes = "function " ++ intercalate  "." ns
-  let body = [ Emb retRes := App (Emb "getinputsfromfile") [filename],
+  let body = [ Emb retRes := App (Emb funName) [filename],
               fileh := App (Emb "fopen") [filename],
               contents := App (Emb "textscan") [fileh, Emb "`%f`"],
               src := CellIndex contents (IntLit  1),
               Statement $ App (Emb "fclose") [fileh],
               readPtr := IntLit 1]
   pure body
-preamble _ = pure []
+preamble funName _ = pure []
 
 display :: Term -> String
 display (IntLit n)
@@ -66,5 +66,5 @@ displayExp n = (indent n ++) . \case
     (ReadOffset t1 t2) -> displayExp 0 (t1 := t1 <++> t2)
     
 instance Output MatlabProgram where
-  addPreamble _ desc pr  = MatlabProgram . (++ pr) <$> preamble desc
+  addPreamble _ f desc pr  = MatlabProgram . (++ pr) <$> preamble f desc
   render = concatMap (displayExp 0) . getProgram

@@ -6,6 +6,7 @@ import Dimension
 import Expression
 import Matlab ( MatlabProgram(MatlabProgram), matlabStart )
 import Python ( PythonProgram(PythonProgram), pythonStart )
+import Parser
 import Optimise
 import Output
 import TranslateContext
@@ -160,10 +161,15 @@ putStartIndex l =
   let index = case l of { Matlab -> matlabStart ; Python -> pythonStart}
   in modify $ \st -> st{startIdx = index}
 
-translate :: TargetLang -> Description Name -> Either TrError String
-translate l x = let d = mkDocument l
+translate :: TargetLang -> String -> Description Name -> Either TrError String
+translate l f x = let d = mkDocument l
   in runExcept
   $ fmap render
-  $ flip evalStateT initState
+  $ flip evalStateT TranslateContext.initState
   $ check x >>=
-    \y -> putStartIndex l >> translate' y >>= addPreamble d y . optimise
+    \y -> putStartIndex l >> translate' y >>= addPreamble d f y . optimise
+
+translateString :: TargetLang -> String -> String -> Either TrError String
+translateString l f s = case parse pDesc s Parser.initState of
+  Right d -> translate l f d
+  Left e -> Left (ParseError e)

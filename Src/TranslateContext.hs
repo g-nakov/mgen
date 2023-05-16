@@ -33,6 +33,7 @@ data TrError
   = UnknownField QualifiedName
   | ExistingField QualifiedName
   | WrongType QualifiedName Ty
+  | ParseError String
   deriving (Eq, Show)
 
 type Translated a = StateT TrState (Except TrError) a
