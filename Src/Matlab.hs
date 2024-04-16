@@ -22,7 +22,7 @@ preamble funName (Object ns _) = do
   let retRes = "function " ++ intercalate  "." ns
   let body = [ Emb retRes := App (Emb funName) [filename],
               fileh := App (Emb "fopen") [filename],
-              contents := App (Emb "textscan") [fileh, Emb "`%f`"],
+              contents := App (Emb "textscan") [fileh, Emb "'%f'"],
               src := CellIndex contents (IntLit  1),
               Statement $ App (Emb "fclose") [fileh],
               readPtr := IntLit 1]
@@ -39,7 +39,7 @@ display (Neg t1) = concat ["( -", display t1, ")"]
 display (Var s) = s
 display (Emb s) = s
 display (Bin op t1 t2) = concat [display t1, " ", show op, " ", display t2]
-display (Index t1 t2) = concat [display t1, "[", display t2, "]"]
+display (Index t1 t2) = concat [display t1, "(", display t2, ")"]
 display (CellIndex t1 t2) = concat [display t1, "{", display t2, "}"]
 display (App f args) = concat [display f ,
                                "(", intercalate ", " (map display args), ")"]
