@@ -9,7 +9,7 @@ import Control.Monad.State
 import Data.Foldable
 import Data.List ( sortOn )
 import Data.Bifunctor ( Bifunctor(bimap) )
-import Data.Functor ( ($>) )
+import Data.Functor
 import Data.Maybe ( fromMaybe )
 
 data BaseUnit
